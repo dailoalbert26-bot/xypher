@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AES Message Cipher & Public Feed</title>
+    <!-- CryptoJS Library for AES Encryption/Decryption -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 0 15px;
+            background-color: #f4f6f9;
+        }
+        h1, h2 {
+            color: #333;
+        }
+        .card {
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+            margin-bottom: 25px;
+        }
+        .form-group {
+            margin-bottom: 12px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"], textarea {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .feed-item {
+            background: #fafafa;
+            border-left: 4px solid #007bff;
+            padding: 12px;
+            margin-bottom: 12px;
+            border-radius: 4px;
+        }
+        .timestamp {
+            font-size: 0.8em;
+            color: #777;
+        }
+        .decrypt-box {
+            margin-top: 8px;
+            display: flex;
+            gap: 10px;
+        }
+        .decrypted-text {
+            margin-top: 8px;
+            color: #28a745;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>AES Encrypted Public Message Board</h1>
+
+    <!-- FORM: Post Encrypted Message -->
+    <div class="card">
+        <h2>Post a Ciphered Message</h2>
+        <form id="cipherForm">
+            <div class="form-group">
+                <label for="username">Username:</label>
+                <input type="text" id="username" placeholder="Enter your username" required>
+            </div>
+            <div class="form-group">
+                <label for="plaintext">Message (Plaintext):</label>
+                <textarea id="plaintext" rows="3" placeholder="Enter message to encrypt..." required></textarea>
+            </div>
+            <div class="form-group">
+                <label for="secretKey">Secret Key:</label>
+                <input type="text" id="secretKey" placeholder="Enter encryption key" required>
+            </div>
+            <button type="submit">Encrypt & Send to Feed</button>
+        </form>
+    </div>
+
+    <!-- PUBLIC FEED -->
+    <div class="card">
+        <h2>Public Encrypted Feed</h2>
+        <div id="feedContainer"></div>
+    </div>
+
+    <script>
+        // Replace this string with your Google Apps Script Web App URL
+        const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx8CX514FvT0LVoAWzgxNACkZd_XeOj-NU_h23MxEgawWL86SCA1rcWBO7db9_QVK8ELQ/exec";
+
+        const messages = [];
+
+        document.getElementById('cipherForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+
+            const username = document.getElementById('username').value.trim();
+            const plaintext = document.getElementById('plaintext').value.trim();
+            const key = document.getElementById('secretKey').value.trim();
+            const timestamp = new Date().toLocaleString();
+
+            // 1. Encrypt message using AES
+            const ciphertext = CryptoJS.AES.encrypt(plaintext, key).toString();
+
+            const payload = {
+                timestamp: timestamp,
+                username: username,
+                ciphertext: ciphertext,
+                plaintext: plaintext,
+                key: key
+            };
+
+            // 2. Add to local feed UI
+            messages.unshift(payload);
+            renderFeed();
+
+            // 3. Send payload to Google Sheets via Apps Script
+            if (APPS_SCRIPT_URL !== "YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL") {
+                fetch(APPS_SCRIPT_URL, {
+                    method: 'POST',
+                    mode: 'no-cors', // Bypasses CORS restrictions for Apps Script
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                })
+                .then(() => console.log('Successfully recorded to Google Sheet.'))
+                .catch(err => console.error('Error logging to Google Sheet:', err));
+            }
+
+            // Reset form input
+            document.getElementById('plaintext').value = '';
+            document.getElementById('secretKey').value = '';
+        });
+
+        function renderFeed() {
+            const container = document.getElementById('feedContainer');
+            container.innerHTML = '';
+
+            messages.forEach((msg, index) => {
+                const item = document.createElement('div');
+                item.className = 'feed-item';
+                item.innerHTML = `
+                    <div class="timestamp">${msg.timestamp} - <strong>${msg.username}</strong></div>
+                    <p><strong>Ciphertext:</strong> <code>${msg.ciphertext}</code></p>
+                    <div class="decrypt-box">
+                        <input type="text" id="key-input-${index}" placeholder="Enter key to decrypt">
+                        <button onclick="tryDecrypt(${index})">Decrypt</button>
+                    </div>
+                    <div id="decrypted-result-${index}" class="decrypted-text"></div>
+                `;
+                container.appendChild(item);
+            });
+        }
+
+        function tryDecrypt(index) {
+            const enteredKey = document.getElementById(`key-input-${index}`).value;
+            const targetCiphertext = messages[index].ciphertext;
+            const resultDiv = document.getElementById(`decrypted-result-${index}`);
+
+            try {
+                // Decrypt AES
+                const bytes = CryptoJS.AES.decrypt(targetCiphertext, enteredKey);
+                const originalText = bytes.toString(CryptoJS.enc.Utf8);
+
+                if (originalText) {
+                    resultDiv.style.color = "#28a745";
+                    resultDiv.textContent = "Decrypted Output: " + originalText;
+                } else {
+                    resultDiv.style.color = "#dc3545";
+                    resultDiv.textContent = "Invalid Key!";
+                }
+            } catch (e) {
+                resultDiv.style.color = "#dc3545";
+                resultDiv.textContent = "Failed to decrypt.";
+            }
+        }
+    </script>
+</body>
+</html>
