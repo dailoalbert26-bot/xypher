@@ -1,103 +1,205 @@
-<script>
-    // Palitan mo 'to ng totoong Web App URL mo mula sa Apps Script
-    const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzzeF5My9VhL3zmgLDC0dNc12qVlvnzxoIP2LZZJCvPjz-PrA3Nu07rtF-Xuk8kgkTQQA/exec";
-
-    // Store messages in memory
-    const messages = [];
-
-    // Tiyaking naka-attach sa form submit event
-    document.getElementById('cipherForm').addEventListener('submit', function (e) {
-        // PERMANENT FIX: Pini-prevent nito ang pag-reload ng page
-        e.preventDefault();
-
-        const username = document.getElementById('username').value.trim();
-        const plaintext = document.getElementById('plaintext').value.trim();
-        const key = document.getElementById('secretKey').value.trim();
-        const timestamp = new Date().toLocaleString();
-
-        if (!plaintext || !key) {
-            alert("Pakilagay ang message at secret key!");
-            return;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AES Message Cipher & Public Feed</title>
+    <!-- CryptoJS Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 0 15px;
+            background-color: #f4f6f9;
         }
-
-        // 1. Encrypt message using AES
-        const ciphertext = CryptoJS.AES.encrypt(plaintext, key).toString();
-
-        const payload = {
-            timestamp: timestamp,
-            username: username,
-            ciphertext: ciphertext,
-            plaintext: plaintext,
-            key: key
-        };
-
-        // 2. Add to local array & update UI feed
-        messages.unshift(payload);
-        renderFeed();
-
-        // 3. Send payload to Google Sheets via Apps Script
-        if (APPS_SCRIPT_URL && APPS_SCRIPT_URL !== "YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL") {
-            fetch(APPS_SCRIPT_URL, {
-                method: 'POST',
-                mode: 'no-cors',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            })
-            .then(() => console.log('Saved to Google Sheets!'))
-            .catch(err => console.error('Sheet Error:', err));
+        h1, h2 {
+            color: #333;
         }
+        .card {
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+            margin-bottom: 25px;
+        }
+        .form-group {
+            margin-bottom: 12px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"], textarea {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .feed-item {
+            background: #fafafa;
+            border-left: 4px solid #007bff;
+            padding: 12px;
+            margin-bottom: 12px;
+            border-radius: 4px;
+        }
+        .timestamp {
+            font-size: 0.8em;
+            color: #777;
+        }
+        .decrypt-box {
+            margin-top: 8px;
+            display: flex;
+            gap: 10px;
+        }
+        .decrypted-text {
+            margin-top: 8px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
 
-        // Clear input fields
-        document.getElementById('plaintext').value = '';
-        document.getElementById('secretKey').value = '';
-    });
+    <h1>AES Encrypted Public Message Board</h1>
 
-    function renderFeed() {
-        const container = document.getElementById('feedContainer');
-        container.innerHTML = '';
+    <!-- FORM SECTION -->
+    <div class="card">
+        <h2>Post a Ciphered Message</h2>
+        <form id="cipherForm">
+            <div class="form-group">
+                <label for="username">Username:</label>
+                <input type="text" id="username" placeholder="Enter your username" required>
+            </div>
+            <div class="form-group">
+                <label for="plaintext">Message (Plaintext):</label>
+                <textarea id="plaintext" rows="3" placeholder="Enter message to encrypt..." required></textarea>
+            </div>
+            <div class="form-group">
+                <label for="secretKey">Secret Key:</label>
+                <input type="text" id="secretKey" placeholder="Enter encryption key" required>
+            </div>
+            <button type="submit">Encrypt & Send to Feed</button>
+        </form>
+    </div>
 
-        messages.forEach((msg, index) => {
-            const item = document.createElement('div');
-            item.className = 'feed-item';
-            item.innerHTML = `
-                <div class="timestamp">${msg.timestamp} - <strong>${msg.username}</strong></div>
-                <p><strong>Ciphertext:</strong> <code>${msg.ciphertext}</code></p>
-                <div class="decrypt-box">
-                    <input type="text" id="key-input-${index}" placeholder="Enter key to decrypt">
-                    <button type="button" onclick="tryDecrypt(${index})">Decrypt</button>
-                </div>
-                <div id="decrypted-result-${index}" class="decrypted-text"></div>
-            `;
-            container.appendChild(item);
+    <!-- PUBLIC FEED SECTION -->
+    <div class="card">
+        <h2>Public Encrypted Feed</h2>
+        <div id="feedContainer"></div>
+    </div>
+
+    <script>
+        const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzzeF5My9VhL3zmgLDC0dNc12qVlvnzxoIP2LZZJCvPjz-PrA3Nu07rtF-Xuk8kgkTQQA/exec";
+
+        const messages = [];
+
+        document.getElementById('cipherForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+
+            const username = document.getElementById('username').value.trim();
+            const plaintext = document.getElementById('plaintext').value.trim();
+            const key = document.getElementById('secretKey').value.trim();
+            const timestamp = new Date().toLocaleString();
+
+            if (!plaintext || !key) {
+                alert("Pakilagay ang message at secret key!");
+                return;
+            }
+
+            // 1. Encrypt message using AES
+            const ciphertext = CryptoJS.AES.encrypt(plaintext, key).toString();
+
+            const payload = {
+                timestamp: timestamp,
+                username: username,
+                ciphertext: ciphertext,
+                plaintext: plaintext,
+                key: key
+            };
+
+            // 2. Add to local array & update UI feed
+            messages.unshift(payload);
+            renderFeed();
+
+            // 3. Send payload to Google Sheets via Apps Script
+            if (APPS_SCRIPT_URL) {
+                fetch(APPS_SCRIPT_URL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                })
+                .then(() => console.log('Saved to Google Sheets!'))
+                .catch(err => console.error('Sheet Error:', err));
+            }
+
+            // Clear input fields
+            document.getElementById('plaintext').value = '';
+            document.getElementById('secretKey').value = '';
         });
-    }
 
-    function tryDecrypt(index) {
-        const enteredKey = document.getElementById(`key-input-${index}`).value.trim();
-        const targetCiphertext = messages[index].ciphertext;
-        const resultDiv = document.getElementById(`decrypted-result-${index}`);
+        function renderFeed() {
+            const container = document.getElementById('feedContainer');
+            container.innerHTML = '';
 
-        if (!enteredKey) {
-            resultDiv.style.color = "#dc3545";
-            resultDiv.textContent = "Mag-enter ng key!";
-            return;
+            messages.forEach((msg, index) => {
+                const item = document.createElement('div');
+                item.className = 'feed-item';
+                item.innerHTML = `
+                    <div class="timestamp">${msg.timestamp} - <strong>${msg.username}</strong></div>
+                    <p><strong>Ciphertext:</strong> <code>${msg.ciphertext}</code></p>
+                    <div class="decrypt-box">
+                        <input type="text" id="key-input-${index}" placeholder="Enter key to decrypt">
+                        <button type="button" onclick="tryDecrypt(${index})">Decrypt</button>
+                    </div>
+                    <div id="decrypted-result-${index}" class="decrypted-text"></div>
+                `;
+                container.appendChild(item);
+            });
         }
 
-        try {
-            // Decrypt AES
-            const bytes = CryptoJS.AES.decrypt(targetCiphertext, enteredKey);
-            const originalText = bytes.toString(CryptoJS.enc.Utf8);
+        function tryDecrypt(index) {
+            const enteredKey = document.getElementById(`key-input-${index}`).value.trim();
+            const targetCiphertext = messages[index].ciphertext;
+            const resultDiv = document.getElementById(`decrypted-result-${index}`);
 
-            if (originalText && originalText.length > 0) {
-                resultDiv.style.color = "#28a745";
-                resultDiv.textContent = "Decrypted Output: " + originalText;
-            } else {
+            if (!enteredKey) {
+                resultDiv.style.color = "#dc3545";
+                resultDiv.textContent = "Mag-enter ng key!";
+                return;
+            }
+
+            try {
+                // Decrypt AES
+                const bytes = CryptoJS.AES.decrypt(targetCiphertext, enteredKey);
+                const originalText = bytes.toString(CryptoJS.enc.Utf8);
+
+                if (originalText && originalText.length > 0) {
+                    resultDiv.style.color = "#28a745";
+                    resultDiv.textContent = "Decrypted Output: " + originalText;
+                } else {
+                    resultDiv.style.color = "#dc3545";
+                    resultDiv.textContent = "Invalid Key!";
+                }
+            } catch (e) {
                 resultDiv.style.color = "#dc3545";
                 resultDiv.textContent = "Invalid Key!";
             }
-        } catch (e) {
-            resultDiv.style.color = "#dc3545";
-            resultDiv.textContent = "Invalid Key!";
         }
-    }
-</script>
+    </script>
+</body>
+</html>
